@@ -1,0 +1,118 @@
+from flask import Flask, request, jsonify
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+
+DB = "tareas.db"
+
+
+def crear_base():
+    with sqlite3.connect(DB) as conexion:
+        conexion.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario TEXT UNIQUE NOT NULL,
+                contrasena TEXT NOT NULL
+            )
+        """)
+
+
+crear_base()
+
+
+@app.route("/")
+def inicio():
+    return """
+    <h1>Bienvenido al sistema de gestion de tareas</h1>
+    <p>API funcionando correctamente</p>
+    """
+
+
+@app.route("/registro", methods=["POST"])
+def registro():
+    datos = request.get_json(silent=True)
+
+    if not isinstance(datos, dict):
+        return jsonify({"mensaje": "Debes enviar un JSON valido"}), 400
+
+    usuario = datos.get("usuario")
+    contrasena = datos.get("contraseña")
+
+    if not isinstance(usuario, str) or not usuario.strip():
+        return jsonify({"mensaje": "El usuario es obligatorio"}), 400
+
+    if not isinstance(contrasena, str) or not contrasena:
+        return jsonify({"mensaje": "La contraseña es obligatoria"}), 400
+
+    usuario = usuario.strip()
+    hash_contrasena = generate_password_hash(contrasena)
+
+    try:
+        with sqlite3.connect(DB) as conexion:
+            conexion.execute(
+                "INSERT INTO usuarios (usuario, contrasena) VALUES (?, ?)",
+                (usuario, hash_contrasena)
+            )
+
+        return jsonify({
+            "mensaje": "Usuario registrado correctamente"
+        }), 201
+
+    except sqlite3.IntegrityError:
+        return jsonify({
+            "mensaje": "El usuario ya existe"
+        }), 409
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    datos = request.get_json(silent=True)
+
+    if not isinstance(datos, dict):
+        return jsonify({"mensaje": "Debes enviar un JSON valido"}), 400
+
+    usuario = datos.get("usuario")
+    contrasena = datos.get("contraseña")
+
+    if not isinstance(usuario, str) or not usuario.strip():
+        return jsonify({"mensaje": "El usuario es obligatorio"}), 400
+
+    if not isinstance(contrasena, str) or not contrasena:
+        return jsonify({"mensaje": "La contraseña es obligatoria"}), 400
+
+    with sqlite3.connect(DB) as conexion:
+        resultado = conexion.execute(
+            "SELECT contrasena FROM usuarios WHERE usuario = ?",
+            (usuario.strip(),)
+        ).fetchone()
+
+    if resultado and check_password_hash(resultado[0], contrasena):
+        return jsonify({
+            "mensaje": "Inicio de sesion exitoso"
+        }), 200
+
+    return jsonify({
+        "mensaje": "Credenciales incorrectas"
+    }), 401
+
+
+@app.route("/tareas", methods=["GET"])
+def tareas():
+    return """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>Gestion de tareas</title>
+    </head>
+    <body>
+        <h1>Bienvenido al modulo de tareas</h1>
+        <p>Gestion de tareas disponible</p>
+    </body>
+    </html>
+    """
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
